@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased bg-white;
+    font-family: 'Open Sans', Verdana, sans-serif;
+  }
+}
+
+/* Thin custom scrollbar for the data table */
+.table-scroll::-webkit-scrollbar {
+  height: 5px;
+}
+.table-scroll::-webkit-scrollbar-track {
+  background: #f5f5f5;
+}
+.table-scroll::-webkit-scrollbar-thumb {
+  background-color: #BBBDC0;
+  border-radius: 4px;
+}
+.table-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: #003DA5;
+}
+
+/* Dual range slider */
+.scl-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+  cursor: pointer;
+}
+.scl-range::-webkit-slider-runnable-track {
+  background: transparent;
+}
+.scl-range::-moz-range-track {
+  background: transparent;
+}
+.scl-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: all;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  border: 2px solid #003DA5;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  cursor: pointer;
+  margin-top: -5px;
+}
+.scl-range::-moz-range-thumb {
+  pointer-events: all;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  border: 2px solid #003DA5;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  cursor: pointer;
+  box-sizing: border-box;
+}
