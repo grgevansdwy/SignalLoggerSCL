@@ -240,38 +240,73 @@ const downloadCSV = (logs) => {
 const RangeSlider = ({ configKey, value, onChange }) => {
   const { min, max, step, unit, gradient } = SLIDER_CONFIGS[configKey];
   const [low, high] = value;
-  const pct  = (v) => ((v - min) / (max - min)) * 100;
+  const pct = (v) => ((v - min) / (max - min)) * 100;
   const lPct = pct(low);
   const hPct = pct(high);
   return (
     <div className="space-y-2">
-      <div className="relative select-none" style={{ height: 24 }}>
+      <div className="relative h-6 flex items-center select-none">
         {/* Colored zone track */}
         <div
-          className="absolute left-0 right-0 rounded-full"
-          style={{ top: "50%", transform: "translateY(-50%)", height: 6, background: gradient }}
+          className="absolute w-full h-1.5 rounded-full"
+          style={{ background: gradient }}
         >
-          <div className="absolute h-full bg-gray-200/80 rounded-l-full" style={{ width: `${lPct}%` }} />
-          <div className="absolute h-full bg-gray-200/80 rounded-r-full" style={{ left: `${hPct}%`, right: 0 }} />
+          <div
+            className="absolute h-full bg-gray-200/80 rounded-l-full"
+            style={{ width: `${lPct}%` }}
+          />
+          <div
+            className="absolute h-full bg-gray-200/80 rounded-r-full"
+            style={{ left: `${hPct}%`, right: 0 }}
+          />
         </div>
         {/* Low handle */}
         <input
-          type="range" min={min} max={max} step={step} value={low}
-          onChange={(e) => { const v = Number(e.target.value); if (v <= high - step) onChange([v, high]); }}
-          className="scl-range absolute w-full"
-          style={{ top: 0, height: "100%", zIndex: low >= high - (max - min) * 0.05 ? 5 : 3 }}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={low}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (v <= high - step) onChange([v, high]);
+          }}
+          className="range-thumb absolute w-full h-full opacity-0"
+          style={{ zIndex: low >= high - (max - min) * 0.05 ? 5 : 3 }}
         />
         {/* High handle */}
         <input
-          type="range" min={min} max={max} step={step} value={high}
-          onChange={(e) => { const v = Number(e.target.value); if (v >= low + step) onChange([low, v]); }}
-          className="scl-range absolute w-full"
-          style={{ top: 0, height: "100%", zIndex: high <= low + (max - min) * 0.05 ? 5 : 4 }}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={high}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (v >= low + step) onChange([low, v]);
+          }}
+          className="range-thumb absolute w-full h-full opacity-0"
+          style={{ zIndex: high <= low + (max - min) * 0.05 ? 5 : 4 }}
+        />
+        {/* Visual thumbs */}
+        <div
+          className="absolute w-4 h-4 rounded-full bg-white border-2 border-[#003DA5] shadow pointer-events-none"
+          style={{ left: `calc(${lPct}% - 8px)`, zIndex: 6 }}
+        />
+        <div
+          className="absolute w-4 h-4 rounded-full bg-white border-2 border-[#003DA5] shadow pointer-events-none"
+          style={{ left: `calc(${hPct}% - 8px)`, zIndex: 6 }}
         />
       </div>
       <div className="flex justify-between text-[11px] font-mono text-gray-600">
-        <span>{low}{unit}</span>
-        <span>{high}{unit}</span>
+        <span>
+          {low}
+          {unit}
+        </span>
+        <span>
+          {high}
+          {unit}
+        </span>
       </div>
     </div>
   );
@@ -280,43 +315,18 @@ const RangeSlider = ({ configKey, value, onChange }) => {
 // ─── FilterPill ───────────────────────────────────────────────
 const FilterPill = ({ label, icon, active, onClear, children }) => {
   const [open, setOpen] = useState(false);
-  const [pos,  setPos]  = useState({ top: 0, left: 0 });
-  const btnRef  = useRef(null);
-  const dropRef = useRef(null);
-
-  // Close on outside click (covers both button and fixed dropdown)
+  const ref = useRef(null);
   useEffect(() => {
     const h = (e) => {
-      if (
-        btnRef.current  && !btnRef.current.contains(e.target) &&
-        dropRef.current && !dropRef.current.contains(e.target)
-      ) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
-
-  // Close if the page scrolls while open
-  useEffect(() => {
-    if (!open) return;
-    const h = () => setOpen(false);
-    window.addEventListener("scroll", h, true);
-    return () => window.removeEventListener("scroll", h, true);
-  }, [open]);
-
-  const handleToggle = () => {
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 6, left: r.left });
-    }
-    setOpen((p) => !p);
-  };
-
   return (
-    <div className="relative">
+    <div ref={ref} className="relative">
       <button
-        ref={btnRef}
-        onClick={handleToggle}
+        onClick={() => setOpen((p) => !p)}
         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all select-none ${
           active
             ? "bg-[#003DA5] text-white border-[#003DA5]"
@@ -325,22 +335,30 @@ const FilterPill = ({ label, icon, active, onClear, children }) => {
       >
         {icon}
         {label}
-        <ChevronDown size={11} className={`transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
+        <ChevronDown
+          size={11}
+          className={`transition-transform duration-150 ${open ? "rotate-180" : ""}`}
+        />
       </button>
       {open && (
-        <div
-          ref={dropRef}
-          style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 9999 }}
-          className="bg-white rounded-xl shadow-xl border border-gray-200 p-4"
-        >
+        <div className="absolute top-full left-0 mt-1.5 bg-white rounded-xl shadow-xl border border-gray-200 z-30 p-4">
           {children}
           <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between">
             {active && onClear && (
-              <button onClick={() => { onClear(); setOpen(false); }} className="text-xs text-red-500 hover:text-red-700 font-medium transition">
+              <button
+                onClick={() => {
+                  onClear();
+                  setOpen(false);
+                }}
+                className="text-xs text-red-500 hover:text-red-700 font-medium transition"
+              >
                 Reset
               </button>
             )}
-            <button onClick={() => setOpen(false)} className="ml-auto text-xs text-[#003DA5] font-semibold hover:underline">
+            <button
+              onClick={() => setOpen(false)}
+              className="ml-auto text-xs text-[#003DA5] font-semibold hover:underline"
+            >
               Done
             </button>
           </div>
@@ -424,7 +442,7 @@ const FilterBar = ({ filters, onChange, allDevices }) => {
     "text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2 block";
 
   return (
-    <>
+    <div className="flex items-center gap-2 px-4 sm:px-5 py-2.5 border-b border-[#BBBDC0] bg-gray-50/60 flex-wrap">
       {/* ── Date ── */}
       <FilterPill
         label="Date"
@@ -548,7 +566,7 @@ const FilterBar = ({ filters, onChange, allDevices }) => {
           Clear all
         </button>
       )}
-    </>
+    </div>
   );
 };
 
@@ -994,7 +1012,7 @@ export default function Dashboard() {
                 Seattle City Light
               </p>
               <h1 className="text-white font-bold text-xl sm:text-2xl leading-tight truncate">
-                Cellular Reliability Data Logger
+                Signal Quality Data Logger
               </h1>
             </div>
           </div>
@@ -1067,22 +1085,28 @@ export default function Dashboard() {
         )}
 
         <div className="bg-white border border-[#BBBDC0] rounded-lg shadow-sm overflow-hidden">
-          {/* ── Card header + filters ── */}
-          <div className="flex items-center px-4 sm:px-5 py-3 border-b border-[#BBBDC0] bg-gray-50/80">
-            {/* Title */}
-            <div className="flex items-center gap-2 flex-shrink-0">
+          {/* ── Card header ── */}
+          <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-[#BBBDC0] bg-gray-50/80">
+            <div className="flex items-center gap-2">
               <Wifi size={15} className="text-[#003DA5]" />
-              <h2 className="text-gray-800 font-semibold text-sm">Signal Logs</h2>
+              <h2 className="text-gray-800 font-semibold text-sm">
+                Signal Logs
+              </h2>
               <span className="text-gray-400 text-xs">
-                — {anyFilter ? `${filteredLogs.length} of ${logs.length}` : logs.length} records
+                —{" "}
+                {anyFilter
+                  ? `${filteredLogs.length} of ${logs.length}`
+                  : logs.length}{" "}
+                records
               </span>
             </div>
-            {/* Filter pills — centered */}
-            <div className="flex-1 flex items-center justify-center gap-2">
-              <FilterBar filters={filters} onChange={setFilters} allDevices={deviceSet} />
-            </div>
-            {/* Action buttons */}
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              {alertCount > 0 && (
+                <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2.5 py-0.5 rounded-full ring-1 ring-red-200">
+                  <AlertTriangle size={11} />
+                  {alertCount} alert{alertCount !== 1 ? "s" : ""}
+                </span>
+              )}
               <button
                 onClick={() => downloadCSV(filteredLogs)}
                 className="inline-flex items-center gap-1.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 hover:border-[#003DA5] hover:text-[#003DA5] text-xs font-semibold px-3 py-1.5 rounded-md transition"
@@ -1099,6 +1123,13 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
+
+          {/* ── Filter bar ── */}
+          <FilterBar
+            filters={filters}
+            onChange={setFilters}
+            allDevices={deviceSet}
+          />
 
           {/* ── Table ── */}
           <div className="overflow-x-auto table-scroll">
