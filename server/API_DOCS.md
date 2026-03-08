@@ -22,7 +22,7 @@ When deployed, replace with your server's URL (e.g. `https://scl-api.onrender.co
 Every request must include your API key in the request header:
 
 ```
-x-api-key: cad9f626033c3a612bb689710cef8499728dc6a1ee9f38fc771ecaa9cd862e66
+x-api-key: <your-api-key>
 ```
 
 Requests without a valid key will get a `401 Unauthorized` response.
@@ -156,7 +156,7 @@ If **any** threshold is breached, the reading is marked `No-Go`.
 ```bash
 curl -X POST https://your-server-url/logs \
   -H "Content-Type: application/json" \
-  -H "x-api-key: cad9f626033c3a612bb689710cef8499728dc6a1ee9f38fc771ecaa9cd862e66" \
+  -H "x-api-key: <your-api-key>" \
   -d '{
     "deviceId": "SCL-001",
     "readings": [
@@ -181,7 +181,7 @@ import requests
 from datetime import datetime, timezone
 
 API_URL = "https://your-server-url/logs"
-API_KEY = "cad9f626033c3a612bb689710cef8499728dc6a1ee9f38fc771ecaa9cd862e66"
+API_KEY = "<your-api-key>"
 
 payload = {
     "deviceId": "SCL-001",
@@ -223,7 +223,7 @@ print(response.json())
    ```
 4. Fill in the values in `.env`:
    ```
-   API_KEY=cad9f626033c3a612bb689710cef8499728dc6a1ee9f38fc771ecaa9cd862e66
+   API_KEY=<your-api-key>
    FIREBASE_SERVICE_ACCOUNT={"type":"service_account", ...}  ← paste the full JSON as one line
    PORT=3001
    ```
