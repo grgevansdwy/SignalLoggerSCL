@@ -35,6 +35,10 @@ const PING_ALERT = 150;
 const BATTERY_ALERT = 5;
 const PAGE_SIZE = 100;
 
+// ─── Device list ─────────────────────────────────────────────
+// Add the Firestore collection name for each device here (TODO: IF ADDING NEW DEVICE, THEN ADD HERE)
+const DEVICE_IDS = ["SCL-001"];
+
 // ─── Slider configs ───────────────────────────────────────────
 const SLIDER_CONFIGS = {
   rssi: {
@@ -106,10 +110,39 @@ const FILTER_DEFAULTS = {
 
 // ─── Helpers ─────────────────────────────────────────────────
 
+// Parses document IDs like "041926_230340" (MMDDYY_HHMMSS) into a Date (UTC)
+const parseTimestampId = (id) => {
+  try {
+    const [datePart, timePart] = id.split("_");
+    if (!datePart || !timePart || datePart.length < 6 || timePart.length < 6)
+      return null;
+    const mm = datePart.slice(0, 2);
+    const dd = datePart.slice(2, 4);
+    const yy = datePart.slice(4, 6);
+    const hh = timePart.slice(0, 2);
+    const min = timePart.slice(2, 4);
+    const ss = timePart.slice(4, 6);
+    const d = new Date(`20${yy}-${mm}-${dd}T${hh}:${min}:${ss}Z`);
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
+};
+
 const formatTimestamp = (ts) => {
   if (!ts) return "—";
   try {
-    const d = ts?.toDate ? ts.toDate() : new Date(ts);
+    let d;
+    if (ts instanceof Date) {
+      d = ts;
+    } else if (ts?.toDate) {
+      d = ts.toDate();
+    } else if (typeof ts === "string" && /^\d{6}_\d{6}$/.test(ts)) {
+      d = parseTimestampId(ts);
+    } else {
+      d = new Date(ts);
+    }
+    if (!d || isNaN(d.getTime())) return "—";
     return d.toISOString().replace("T", " ").slice(0, 19) + " UTC";
   } catch {
     return "—";
@@ -165,9 +198,11 @@ const isRangeActive = (key, filters) =>
 const applyFilters = (logs, filters) =>
   logs.filter((log) => {
     if (filters.dateFrom || filters.dateTo) {
-      const d = log.timestamp?.toDate
-        ? log.timestamp.toDate()
-        : new Date(log.timestamp);
+      const d =
+        log._parsedTimestamp ??
+        (log.timestamp?.toDate
+          ? log.timestamp.toDate()
+          : new Date(log.timestamp));
       if (filters.dateFrom && d < new Date(filters.dateFrom + "T00:00:00Z"))
         return false;
       if (filters.dateTo && d > new Date(filters.dateTo + "T23:59:59Z"))
@@ -211,7 +246,7 @@ const downloadCSV = (logs) => {
   const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const rows = logs.map((log) =>
     [
-      formatTimestamp(log.timestamp),
+      formatTimestamp(log._parsedTimestamp ?? log.timestamp),
       log.deviceId ?? "",
       log.rssi ?? "",
       log.rsrq ?? "",
@@ -939,21 +974,60 @@ export default function Dashboard() {
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    const q = query(collection(db, "logs"), orderBy("timestamp", "desc"));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setLoading(false);
-        setLastUpdated(new Date());
-      },
-      (err) => {
-        console.error("[SCL Dashboard]", err);
-        setError(err.message);
-        setLoading(false);
-      },
+    const allDeviceLogs = {};
+    let loadedCount = 0;
+
+    const mergeLogs = () => {
+      const merged = Object.values(allDeviceLogs)
+        .flat()
+        .sort((a, b) => {
+          const ta = a._parsedTimestamp?.getTime() ?? 0;
+          const tb = b._parsedTimestamp?.getTime() ?? 0;
+          return tb - ta;
+        });
+      setLogs(merged);
+      setLastUpdated(new Date());
+    };
+
+    const unsubs = DEVICE_IDS.map((deviceId) =>
+      onSnapshot(
+        collection(db, deviceId),
+        (snap) => {
+          allDeviceLogs[deviceId] = snap.docs.map((d) => {
+            const data = d.data();
+            const rawBattery = data.battery ?? null;
+            const battery =
+              rawBattery != null && rawBattery > 1000
+                ? rawBattery / 1000
+                : rawBattery;
+            // Support both top-level lat/lng and nested gps object
+            const gps =
+              data.gps ??
+              (data.latitude != null
+                ? { lat: data.latitude, lng: data.longitude }
+                : null);
+            return {
+              id: `${deviceId}_${d.id}`,
+              deviceId,
+              ...data,
+              battery,
+              gps,
+              _parsedTimestamp: parseTimestampId(d.id),
+            };
+          });
+          loadedCount++;
+          if (loadedCount >= DEVICE_IDS.length) setLoading(false);
+          mergeLogs();
+        },
+        (err) => {
+          console.error(`[SCL Dashboard] ${deviceId}:`, err);
+          setError(err.message);
+          setLoading(false);
+        },
+      ),
     );
-    return () => unsub();
+
+    return () => unsubs.forEach((u) => u());
   }, []);
 
   // Reset to page 1 when filters change
@@ -1173,7 +1247,9 @@ export default function Dashboard() {
                               />
                             )}
                             <span className="font-mono text-xs text-gray-600">
-                              {formatTimestamp(log.timestamp)}
+                              {formatTimestamp(
+                                log._parsedTimestamp ?? log.timestamp,
+                              )}
                             </span>
                           </div>
                         </td>
