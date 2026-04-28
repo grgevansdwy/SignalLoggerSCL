@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import sclLogo from "../assets/scl_logo.svg";
 import {
   collection,
-  query,
-  orderBy,
   onSnapshot,
-  addDoc,
-  Timestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
+import { DEVICE_IDS, parseTimestampId } from "../deviceConfig";
 import {
   Signal,
   Battery,
@@ -18,8 +16,6 @@ import {
   CheckCircle,
   Activity,
   Zap,
-  Plus,
-  X,
   ChevronDown,
   Download,
   Calendar,
@@ -34,10 +30,6 @@ const SINR_ALERT = 0;
 const PING_ALERT = 150;
 const BATTERY_ALERT = 5;
 const PAGE_SIZE = 100;
-
-// ─── Device list ─────────────────────────────────────────────
-// Add the Firestore collection name for each device here (TODO: IF ADDING NEW DEVICE, THEN ADD HERE)
-const DEVICE_IDS = ["SCL-001"];
 
 // ─── Slider configs ───────────────────────────────────────────
 const SLIDER_CONFIGS = {
@@ -109,25 +101,6 @@ const FILTER_DEFAULTS = {
 };
 
 // ─── Helpers ─────────────────────────────────────────────────
-
-// Parses document IDs like "041926_230340" (MMDDYY_HHMMSS) into a Date (UTC)
-const parseTimestampId = (id) => {
-  try {
-    const [datePart, timePart] = id.split("_");
-    if (!datePart || !timePart || datePart.length < 6 || timePart.length < 6)
-      return null;
-    const mm = datePart.slice(0, 2);
-    const dd = datePart.slice(2, 4);
-    const yy = datePart.slice(4, 6);
-    const hh = timePart.slice(0, 2);
-    const min = timePart.slice(2, 4);
-    const ss = timePart.slice(4, 6);
-    const d = new Date(`20${yy}-${mm}-${dd}T${hh}:${min}:${ss}Z`);
-    return isNaN(d.getTime()) ? null : d;
-  } catch {
-    return null;
-  }
-};
 
 const formatTimestamp = (ts) => {
   if (!ts) return "—";
@@ -760,217 +733,19 @@ const COLUMNS = [
   "Status",
 ];
 
-// ─── Add Log Modal ────────────────────────────────────────────
-const EMPTY_FORM = {
-  deviceId: "",
-  rssi: "",
-  rsrq: "",
-  rsrp: "",
-  sinr: "",
-  ping: "",
-  lat: "",
-  lng: "",
-  battery: "",
-};
-
-function AddLogModal({ onClose }) {
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
-
-  const set = (field) => (e) =>
-    setForm((prev) => ({ ...prev, [field]: e.target.value }));
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const rssi = form.rssi !== "" ? Number(form.rssi) : null;
-      const rsrq = form.rsrq !== "" ? Number(form.rsrq) : null;
-      const rsrp = form.rsrp !== "" ? Number(form.rsrp) : null;
-      const sinr = form.sinr !== "" ? Number(form.sinr) : null;
-      const ping = form.ping !== "" ? Number(form.ping) : null;
-      const battery = form.battery !== "" ? Number(form.battery) : null;
-      const doc = {
-        timestamp: Timestamp.now(),
-        deviceId: form.deviceId.trim() || null,
-        rssi,
-        rsrq,
-        rsrp,
-        sinr,
-        ping,
-        battery,
-        status: computeStatus({ rssi, rsrq, rsrp, sinr, ping, battery }),
-        gps:
-          form.lat !== "" && form.lng !== ""
-            ? { lat: Number(form.lat), lng: Number(form.lng) }
-            : null,
-      };
-      await addDoc(collection(db, "logs"), doc);
-      onClose();
-    } catch (err) {
-      setSaveError(err.message);
-      setSaving(false);
-    }
-  };
-
-  const fieldCls =
-    "w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#003DA5]/40 focus:border-[#003DA5] transition";
-  const labelCls =
-    "block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1";
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <h3 className="font-bold text-gray-800 text-base flex items-center gap-2">
-            <Plus size={16} className="text-[#003DA5]" />
-            Add Log Entry
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition"
-            aria-label="Close"
-          >
-            <X size={18} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          <div>
-            <label className={labelCls}>Device ID</label>
-            <input
-              type="text"
-              placeholder="e.g. SCL-001"
-              value={form.deviceId}
-              onChange={set("deviceId")}
-              className={fieldCls}
-            />
-          </div>
-          <fieldset className="border border-gray-200 rounded-lg p-3">
-            <legend className={labelCls + " px-1"}>Signal Metrics</legend>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { key: "rssi", label: "RSSI (dBm)" },
-                { key: "rsrq", label: "RSRQ (dB)" },
-                { key: "rsrp", label: "RSRP (dBm)" },
-                { key: "sinr", label: "SINR (dB)" },
-              ].map(({ key, label }) => (
-                <div key={key}>
-                  <label className={labelCls}>{label}</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    placeholder="—"
-                    value={form[key]}
-                    onChange={set(key)}
-                    className={fieldCls}
-                  />
-                </div>
-              ))}
-            </div>
-          </fieldset>
-          <div>
-            <label className={labelCls}>Ping / Latency (ms)</label>
-            <input
-              type="number"
-              min="0"
-              placeholder="e.g. 45"
-              value={form.ping}
-              onChange={set("ping")}
-              className={fieldCls}
-            />
-          </div>
-          <fieldset className="border border-gray-200 rounded-lg p-3">
-            <legend className={labelCls + " px-1"}>GPS</legend>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls}>Latitude</label>
-                <input
-                  type="number"
-                  step="0.00001"
-                  placeholder="e.g. 47.60621"
-                  value={form.lat}
-                  onChange={set("lat")}
-                  className={fieldCls}
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Longitude</label>
-                <input
-                  type="number"
-                  step="0.00001"
-                  placeholder="e.g. -122.33207"
-                  value={form.lng}
-                  onChange={set("lng")}
-                  className={fieldCls}
-                />
-              </div>
-            </div>
-          </fieldset>
-          <div>
-            <label className={labelCls}>Battery (% or V)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="e.g. 82 (%) or 3.72 (V)"
-              value={form.battery}
-              onChange={set("battery")}
-              className={fieldCls}
-            />
-          </div>
-          {saveError && (
-            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-red-700 text-xs">
-              <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
-              <span>{saveError}</span>
-            </div>
-          )}
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md transition font-semibold"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-2 text-sm text-white bg-[#003DA5] hover:bg-[#002d7a] disabled:opacity-50 rounded-md transition font-semibold flex items-center gap-1.5"
-            >
-              {saving ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Saving…
-                </>
-              ) : (
-                <>
-                  <Plus size={14} />
-                  Save Entry
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 // ─── Dashboard ───────────────────────────────────────────────
 export default function Dashboard() {
+  const { deviceId: urlDeviceId } = useParams();
+  const navigate = useNavigate();
+
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [filters, setFilters] = useState(FILTER_DEFAULTS);
+  const [filters, setFilters] = useState(() => ({
+    ...FILTER_DEFAULTS,
+    devices: urlDeviceId ? [urlDeviceId] : [],
+  }));
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
@@ -985,7 +760,21 @@ export default function Dashboard() {
           const tb = b._parsedTimestamp?.getTime() ?? 0;
           return tb - ta;
         });
-      setLogs(merged);
+
+      // Find most recent GPS per device (merged is newest-first)
+      const latestGps = {};
+      merged.forEach((log) => {
+        if (log.gps && !latestGps[log.deviceId]) {
+          latestGps[log.deviceId] = log.gps;
+        }
+      });
+
+      const enriched = merged.map((log) => ({
+        ...log,
+        gps: log.gps ?? latestGps[log.deviceId] ?? null,
+      }));
+
+      setLogs(enriched);
       setLastUpdated(new Date());
     };
 
@@ -1000,18 +789,28 @@ export default function Dashboard() {
               rawBattery != null && rawBattery > 1000
                 ? rawBattery / 1000
                 : rawBattery;
-            // Support both top-level lat/lng and nested gps object
             const gps =
               data.gps ??
               (data.latitude != null
                 ? { lat: data.latitude, lng: data.longitude }
                 : null);
+            const status =
+              data.status ??
+              computeStatus({
+                rssi: data.rssi,
+                rsrq: data.rsrq,
+                rsrp: data.rsrp,
+                sinr: data.sinr,
+                ping: data.ping,
+                battery,
+              });
             return {
               id: `${deviceId}_${d.id}`,
               deviceId,
               ...data,
               battery,
               gps,
+              status,
               _parsedTimestamp: parseTimestampId(d.id),
             };
           });
@@ -1035,9 +834,16 @@ export default function Dashboard() {
 
   if (loading) return <LoadingScreen />;
 
-  const alertCount = logs.filter(isAlert).length;
   const deviceSet = [...new Set(logs.map((l) => l.deviceId).filter(Boolean))];
   const filteredLogs = applyFilters(logs, filters);
+  const alertCount = filteredLogs.filter(isAlert).length;
+  // Show "Viewing" label only when exactly one device is in view
+  const viewingDevice =
+    filters.devices.length === 1
+      ? filters.devices[0]
+      : filters.devices.length === 0 && urlDeviceId
+        ? urlDeviceId
+        : null;
   const totalPages = Math.max(1, Math.ceil(filteredLogs.length / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
   const pagedLogs = filteredLogs.slice(
@@ -1074,8 +880,6 @@ export default function Dashboard() {
       className="min-h-screen bg-white flex flex-col"
       style={{ fontFamily: '"Open Sans", Verdana, sans-serif' }}
     >
-      {showAddModal && <AddLogModal onClose={() => setShowAddModal(false)} />}
-
       {/* ══ HEADER ══ */}
       <header className="bg-[#003DA5] text-white shadow-md">
         <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 h-[72px] flex items-center justify-between gap-4">
@@ -1090,38 +894,49 @@ export default function Dashboard() {
               </h1>
             </div>
           </div>
-          <div className="hidden sm:flex flex-col items-end flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
-              </span>
-              <span className="text-green-300 text-xs font-semibold tracking-widest uppercase">
-                Live
-              </span>
+          <div className="hidden sm:flex items-center gap-4 flex-shrink-0">
+            <div className="flex flex-col items-end">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
+                </span>
+                <span className="text-green-300 text-xs font-semibold tracking-widest uppercase">
+                  Live
+                </span>
+              </div>
+              {lastUpdated && (
+                <p className="text-blue-300/70 text-[10px] mt-0.5">
+                  Updated{" "}
+                  {lastUpdated.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  })}
+                </p>
+              )}
             </div>
-            {lastUpdated && (
-              <p className="text-blue-300/70 text-[10px] mt-0.5">
-                Updated{" "}
-                {lastUpdated.toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  second: "2-digit",
-                })}
-              </p>
-            )}
           </div>
         </div>
       </header>
 
       {/* ══ STATS BAR ══ */}
       <div className="border-b border-[#BBBDC0] bg-gray-50">
-        <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+        <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center">
+          {/* Left: Map button */}
+          <button
+            onClick={() => navigate("/")}
+            className="flex-shrink-0 flex items-center gap-1.5 text-xs text-[#003DA5] hover:text-white hover:bg-[#003DA5] border border-[#003DA5]/40 hover:border-[#003DA5] px-2.5 py-1.5 rounded-md transition font-semibold"
+          >
+            ← Map
+          </button>
+
+          {/* Center: per-device stats */}
+          <div className="flex-1 flex justify-center gap-x-8 gap-y-3 flex-wrap">
             <StatTile
               icon={<Activity size={16} />}
               label="Total Logs"
-              value={logs.length}
+              value={filteredLogs.length}
             />
             <StatTile
               icon={<AlertTriangle size={16} />}
@@ -1129,20 +944,21 @@ export default function Dashboard() {
               value={alertCount}
               alert={alertCount > 0}
             />
-            <StatTile
-              icon={<Signal size={16} />}
-              label="Devices"
-              value={deviceSet.length}
-            />
-            <div className="ml-auto hidden sm:block text-right">
-              <p className="text-[10px] text-gray-400 uppercase tracking-widest">
-                Data Source
+          </div>
+
+          {/* Right: single-device label */}
+          {viewingDevice ? (
+            <div className="flex-shrink-0 hidden sm:flex items-center gap-2">
+              <p className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">
+                Viewing
               </p>
-              <p className="text-xs text-gray-600 font-semibold font-mono">
-                Firestore · logs
+              <p className="text-lg text-[#003DA5] font-bold font-mono leading-none">
+                {viewingDevice}
               </p>
             </div>
-          </div>
+          ) : (
+            <div className="flex-shrink-0 hidden sm:block w-[120px]" />
+          )}
         </div>
       </div>
 
@@ -1166,34 +982,14 @@ export default function Dashboard() {
               <h2 className="text-gray-800 font-semibold text-sm">
                 Signal Logs
               </h2>
-              <span className="text-gray-400 text-xs">
-                —{" "}
-                {anyFilter
-                  ? `${filteredLogs.length} of ${logs.length}`
-                  : logs.length}{" "}
-                records
-              </span>
             </div>
             <div className="flex items-center gap-2">
-              {alertCount > 0 && (
-                <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2.5 py-0.5 rounded-full ring-1 ring-red-200">
-                  <AlertTriangle size={11} />
-                  {alertCount} alert{alertCount !== 1 ? "s" : ""}
-                </span>
-              )}
               <button
                 onClick={() => downloadCSV(filteredLogs)}
                 className="inline-flex items-center gap-1.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 hover:border-[#003DA5] hover:text-[#003DA5] text-xs font-semibold px-3 py-1.5 rounded-md transition"
               >
                 <Download size={13} strokeWidth={2.5} />
                 Export CSV
-              </button>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="inline-flex items-center gap-1.5 bg-[#003DA5] hover:bg-[#002d7a] text-white text-xs font-semibold px-3 py-1.5 rounded-md transition"
-              >
-                <Plus size={13} strokeWidth={2.5} />
-                Add Entry
               </button>
             </div>
           </div>
